@@ -1,0 +1,27 @@
+From 23f189ce6a2940e8d2f1d57db28dcb35e43195eb Mon Sep 17 00:00:00 2001
+From: Philippe Reynes <tremyfr@yahoo.fr>
+Date: Sat, 22 Jun 2013 18:56:18 +0200
+Subject: [PATCH] apf27: define base addr when using device tree
+
+
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+---
+ arch/arm/mach-imx/fpga.h |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/mach-imx/fpga.h b/arch/arm/mach-imx/fpga.h
+index 49ec4b9..58c4a9a 100644
+--- a/arch/arm/mach-imx/fpga.h
++++ b/arch/arm/mach-imx/fpga.h
+@@ -26,7 +26,7 @@
+ # define APF51_FPGA_IRQ			(gpio_to_irq(APF51_FPGA_INT_PIN))
+ # define ARMADEUS_FPGA_IRQ		APF51_FPGA_IRQ
+ # define IRQ_FPGA_START			(MXC_BOARD_IRQ_START + 64)
+-#elif defined(CONFIG_MACH_APF27) /* */
++#elif defined(CONFIG_MACH_APF27) || defined(CONFIG_MACH_MX27) /* */
+ #include "iomux-v1.h"
+ # define APF27_FPGA_BASE_ADDR		0xd6000000
+ # define ARMADEUS_FPGA_BASE_ADDR	APF27_FPGA_BASE_ADDR
+-- 
+1.7.4.4
+

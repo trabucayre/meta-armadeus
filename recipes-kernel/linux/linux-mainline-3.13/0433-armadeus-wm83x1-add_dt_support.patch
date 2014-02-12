@@ -1,0 +1,330 @@
+Index: linux-3.12-rc3/drivers/input/touchscreen/wm831x-ts.c
+===================================================================
+--- linux-3.12-rc3.orig/drivers/input/touchscreen/wm831x-ts.c
++++ linux-3.12-rc3/drivers/input/touchscreen/wm831x-ts.c
+@@ -22,6 +22,8 @@
+ #include <linux/mfd/wm831x/core.h>
+ #include <linux/mfd/wm831x/irq.h>
+ #include <linux/mfd/wm831x/pdata.h>
++#include <linux/of.h>
++#include <linux/of_gpio.h>
+ #include <linux/platform_device.h>
+ #include <linux/slab.h>
+ #include <linux/types.h>
+@@ -233,17 +235,64 @@ static void wm831x_ts_input_close(struct
+ 	}
+ }
+ 
++#ifdef CONFIG_OF
++static int wm831x_ts_set_pdata_from_of(struct wm831x *wm831x,
++					struct wm831x_touch_pdata *data)
++{
++	struct device_node *np = wm831x->dev->of_node;
++	struct device_node *gpio_np;
++	const char *desc = "wm8311_ts";
++	int gpio;
++
++	if (!np)
++		return 1;
++
++	gpio_np = of_parse_phandle(np, "touch", 0);
++	if (!gpio_np)
++		return 1;
++
++	memset(data, 0, sizeof(*data));
++
++	if (of_find_property(gpio_np, "fivewire", NULL))
++		data->fivewire = 1;
++	of_property_read_u32(gpio_np, "isel", &data->isel);
++	of_property_read_u32(gpio_np, "rpu", &data->rpu);
++	if (of_find_property(gpio_np, "pressure", NULL))
++		data->pressure = true;
++
++	gpio = of_get_gpio_flags(gpio_np, 0, NULL);
++	gpio_request_one(gpio, GPIOF_IN, desc);
++	data->data_irq = gpio_to_irq(gpio);
++	gpio = of_get_gpio_flags(gpio_np, 1, NULL);
++	gpio_request_one(gpio, GPIOF_IN, desc);
++	data->pd_irq = gpio_to_irq(gpio);
++
++	return 0;
++}
++#else
++static int wm831x_ts_set_pdata_from_of(struct wm831x *wm831x,
++   					struct wm831x_pdata *data)
++{
++	return 0;
++}
++#endif
++
+ static int wm831x_ts_probe(struct platform_device *pdev)
+ {
+ 	struct wm831x_ts *wm831x_ts;
+ 	struct wm831x *wm831x = dev_get_drvdata(pdev->dev.parent);
+ 	struct wm831x_pdata *core_pdata = dev_get_platdata(pdev->dev.parent);
+ 	struct wm831x_touch_pdata *pdata = NULL;
++	struct wm831x_touch_pdata defpdata;
+ 	struct input_dev *input_dev;
+ 	int error, irqf;
+ 
+ 	if (core_pdata)
+ 		pdata = core_pdata->touch;
++	else {
++		wm831x_ts_set_pdata_from_of(wm831x, &defpdata);
++		pdata = &defpdata;
++	}
+ 
+ 	wm831x_ts = devm_kzalloc(&pdev->dev, sizeof(struct wm831x_ts),
+ 				 GFP_KERNEL);
+Index: linux-3.12-rc3/drivers/leds/leds-wm831x-status.c
+===================================================================
+--- linux-3.12-rc3.orig/drivers/leds/leds-wm831x-status.c
++++ linux-3.12-rc3/drivers/leds/leds-wm831x-status.c
+@@ -13,6 +13,7 @@
+ #include <linux/init.h>
+ #include <linux/platform_device.h>
+ #include <linux/slab.h>
++#include <linux/of.h>
+ #include <linux/leds.h>
+ #include <linux/err.h>
+ #include <linux/mfd/wm831x/core.h>
+@@ -220,6 +221,45 @@ static ssize_t wm831x_status_src_store(s
+ 
+ static DEVICE_ATTR(src, 0644, wm831x_status_src_show, wm831x_status_src_store);
+ 
++#ifdef CONFIG_OF
++static int wm831x_status_set_pdata_from_of(struct wm831x *wm831x, int id,
++					struct wm831x_status_pdata *data)
++{
++	struct device_node *np = wm831x->dev->of_node;
++	struct device_node *gpio_np;
++	struct device_node *child;
++	int count;
++	int of_id;
++
++	memset(data, 0, sizeof(*data));
++
++	gpio_np = of_parse_phandle(np, "status-leds", 0);
++	if (gpio_np) {
++		count = of_get_child_count(gpio_np);
++		if (!count)
++			return 1;
++
++		for_each_child_of_node(gpio_np, child){
++			of_property_read_u32(child, "id", &of_id);
++			printk("%d %d\n",of_id, id);
++			if (of_id == id) {
++				data->name = of_get_property(child, "label", NULL);
++				of_property_read_u32(child, "default_src", (int*)&data->default_src);
++				data->default_trigger = of_get_property(child, "default_trigger", NULL);
++				return 0;
++			}
++		}
++	}
++	return 1;
++}
++#else
++static int wm831x_status_set_pdata_from_of(struct wm831x *wm831x,
++   					struct wm831x_pdata *data)
++{
++	return 0;
++}
++#endif
++
+ static int wm831x_status_probe(struct platform_device *pdev)
+ {
+ 	struct wm831x *wm831x = dev_get_drvdata(pdev->dev.parent);
+@@ -254,8 +294,13 @@ static int wm831x_status_probe(struct pl
+ 	memset(&pdata, 0, sizeof(pdata));
+ 	if (chip_pdata && chip_pdata->status[id])
+ 		memcpy(&pdata, chip_pdata->status[id], sizeof(pdata));
+-	else
+-		pdata.name = dev_name(&pdev->dev);
++	else {
++		if (wm831x->dev->of_node){
++			if (wm831x_status_set_pdata_from_of(wm831x, id, &pdata)	!= 0)
++				pdata.name = dev_name(&pdev->dev);
++		}else
++			pdata.name = dev_name(&pdev->dev);
++	}
+ 
+ 	mutex_init(&drvdata->mutex);
+ 	INIT_WORK(&drvdata->work, wm831x_status_work);
+@@ -297,6 +342,7 @@ static int wm831x_status_probe(struct pl
+ 		dev_err(&pdev->dev,
+ 			"No source control for LED: %d\n", ret);
+ 
++	dev_info(&pdev->dev, "probed\n");
+ 	return 0;
+ 
+ err_led:
+@@ -319,7 +365,7 @@ static struct platform_driver wm831x_sta
+ 	.driver = {
+ 		   .name = "wm831x-status",
+ 		   .owner = THIS_MODULE,
+-		   },
++	},
+ 	.probe = wm831x_status_probe,
+ 	.remove = wm831x_status_remove,
+ };
+Index: linux-3.12-rc3/drivers/mfd/wm831x-core.c
+===================================================================
+--- linux-3.12-rc3.orig/drivers/mfd/wm831x-core.c
++++ linux-3.12-rc3/drivers/mfd/wm831x-core.c
+@@ -17,6 +17,9 @@
+ #include <linux/bcd.h>
+ #include <linux/delay.h>
+ #include <linux/mfd/core.h>
++#include <linux/of.h>
++#include <linux/of_device.h>
++#include <linux/of_gpio.h>
+ #include <linux/slab.h>
+ #include <linux/err.h>
+ 
+@@ -1613,16 +1616,70 @@ struct regmap_config wm831x_regmap_confi
+ };
+ EXPORT_SYMBOL_GPL(wm831x_regmap_config);
+ 
++
++#ifdef CONFIG_OF
++static int wm831x_set_pdata_from_of(struct wm831x *wm831x,
++					struct wm831x_pdata *data)
++{
++	struct device_node *np = wm831x->dev->of_node;
++	struct device_node *gpio_np;
++	struct device_node *child;
++	struct wm831x_status_pdata status_pdata;
++	int i, count, gpio;
++	const char *desc = "wm8311_core";
++
++	if (!np)
++		return 0;
++
++	memset(data, 0, sizeof(*data));
++	/* TBD: wm831x_num */
++
++	if (of_find_property(np, "wlf,irq-cmos", NULL))
++		data->irq_cmos = true;
++
++	if (of_find_property(np, "wlf,disable-touch", NULL))
++		data->disable_touch = true;
++
++	if (of_find_property(np, "wlf,disable-touch", NULL))
++		data->disable_touch = true;
++
++	if (of_find_property(np, "wlf,soft-shutdown", NULL))
++		data->soft_shutdown = true;
++	
++	gpio = of_get_gpio_flags(np, 0, NULL);
++	gpio_request_one(gpio, GPIOF_IN, desc);
++	data->irq_base = gpio_to_irq(gpio);
++
++
++	/* TBD: gpio_base */
++	return 0;
++}
++#else
++static int wm831x_set_pdata_from_of(struct wm831x *wm831x,
++					struct wm831x_pdata *data)
++{
++	return 0;
++}
++#endif
++
+ /*
+  * Instantiate the generic non-control parts of the device.
+  */
+ int wm831x_device_init(struct wm831x *wm831x, unsigned long id, int irq)
+ {
+-	struct wm831x_pdata *pdata = dev_get_platdata(wm831x->dev);
++	struct wm831x_pdata *pdata;
++	struct wm831x_pdata defdata;
+ 	int rev, wm831x_num;
+ 	enum wm831x_parent parent;
+ 	int ret, i;
+ 
++	if (dev_get_platdata(wm831x->dev)) {
++		pdata = dev_get_platdata(wm831x->dev);
++	} else {
++		wm831x_set_pdata_from_of(wm831x, &defdata);
++		pdata = &defdata;
++	}
++
+ 	mutex_init(&wm831x->io_lock);
+ 	mutex_init(&wm831x->key_lock);
+ 	dev_set_drvdata(wm831x->dev, wm831x);
+Index: linux-3.12-rc3/drivers/mfd/wm831x-i2c.c
+===================================================================
+--- linux-3.12-rc3.orig/drivers/mfd/wm831x-i2c.c
++++ linux-3.12-rc3/drivers/mfd/wm831x-i2c.c
+@@ -24,6 +24,12 @@
+ #include <linux/mfd/wm831x/core.h>
+ #include <linux/mfd/wm831x/pdata.h>
+ 
++static const struct of_device_id wm831x_of_match[] = {
++	{ .compatible = "wlf, wm8311", .data = (void *)WM8311 },
++	{}
++};
++MODULE_DEVICE_TABLE(of, wm831x_of_match);
++
+ static int wm831x_i2c_probe(struct i2c_client *i2c,
+ 			    const struct i2c_device_id *id)
+ {
+@@ -92,6 +98,7 @@ static struct i2c_driver wm831x_i2c_driv
+ 		.name = "wm831x",
+ 		.owner = THIS_MODULE,
+ 		.pm = &wm831x_pm_ops,
++		.of_match_table = of_match_ptr(wm831x_of_match),
+ 	},
+ 	.probe = wm831x_i2c_probe,
+ 	.remove = wm831x_i2c_remove,
+Index: linux-3.12-rc3/drivers/mfd/wm831x-irq.c
+===================================================================
+--- linux-3.12-rc3.orig/drivers/mfd/wm831x-irq.c
++++ linux-3.12-rc3/drivers/mfd/wm831x-irq.c
+@@ -19,6 +19,9 @@
+ #include <linux/mfd/core.h>
+ #include <linux/interrupt.h>
+ #include <linux/irqdomain.h>
++#include <linux/of.h>
++#include <linux/of_device.h>
++#include <linux/of_gpio.h>
+ 
+ #include <linux/mfd/wm831x/core.h>
+ #include <linux/mfd/wm831x/pdata.h>
+@@ -569,12 +572,35 @@ static struct irq_domain_ops wm831x_irq_
+ 	.xlate	= irq_domain_xlate_twocell,
+ };
+ 
++static int wm831x_irq_set_pdata_from_of(struct wm831x *wm831x,
++                    struct wm831x_pdata *data)
++{
++
++	struct device_node *np = wm831x->dev->of_node;
++	const char *desc = "wm8311_irq";
++	int gpio;
++
++	if (!np)
++		return 1;
++
++	gpio = of_get_gpio_flags(np, 0, NULL);
++	gpio_request_one(gpio, GPIOF_IN, desc);
++	data->irq_base = gpio_to_irq(gpio);
++	return 0;
++}
++
+ int wm831x_irq_init(struct wm831x *wm831x, int irq)
+ {
+ 	struct wm831x_pdata *pdata = dev_get_platdata(wm831x->dev);
++	struct wm831x_pdata defdata;
+ 	struct irq_domain *domain;
+ 	int i, ret, irq_base;
+ 
++	if (!pdata) {
++		wm831x_irq_set_pdata_from_of(wm831x, &defdata);
++		pdata = &defdata;
++	}
++
+ 	mutex_init(&wm831x->irq_lock);
+ 
+ 	/* Mask the individual interrupt sources */

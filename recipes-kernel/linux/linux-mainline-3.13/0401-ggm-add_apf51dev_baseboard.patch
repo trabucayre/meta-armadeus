@@ -1,0 +1,155 @@
+Index: linux-3.13-rc7/arch/arm/boot/dts/imx51-apf51dev.dts
+===================================================================
+--- linux-3.13-rc7.orig/arch/arm/boot/dts/imx51-apf51dev.dts
++++ linux-3.13-rc7/arch/arm/boot/dts/imx51-apf51dev.dts
+@@ -43,6 +43,13 @@
+ 		};
+ 	};
+ 
++	backlight@bl1{
++		compatible = "gpio-backlight";
++		gpios = <&gpio3 4 0>;
++		default-value = <1>;
++		label = "apf51-backlight";
++	};
++
+ 	gpio-keys {
+ 		compatible = "gpio-keys";
+ 
+@@ -61,13 +68,59 @@
+ 			gpios = <&gpio1 2 0>;
+ 			linux,default-trigger = "heartbeat";
+ 		};
++	};
++
++	wm831x_leds_status: wm831x-status {
++
++		led1 {
++			id = <0>;
++			label = "LED1:red:";
++			default_src = <0>;
++		};
+ 
+-		backlight {
+-			label = "Backlight";
+-			gpios = <&gpio3 4 0>;
+-			default-state = "on";
++		led2 {
++			id = <1>;
++			label = "LED1:green:";
++			default_src = <4>;
++			default_trigger = "heartbeat";
+ 		};
+ 	};
++
++	apf51_wm831x_touch: wm831x-touch {
++		/*fivewire;*/
++		pressure;
++
++		/*interrupt-parent = <&gpio1>;
++		interrupts = <4 1>, <6 1>;
++		data_irq = <&gpio1 4 0>;
++		pd_irq = <&gpio1 6 0>;*/
++		gpios = <&gpio1 4 0>, /* data_irq */
++				<&gpio1 6 0>; /* pd_irq */
++
++	};
++
++	sound {
++		compatible = "armadeus,imx51-apf51dev-wm8960",
++			   "fsl,imx-audio-wm8960";
++		model = "wm8960-audio";
++		ssi-controller = <&ssi1>;
++		audio-codec = <&codec>;
++		audio-routing =
++			"LINPUT1", "Mic Jack",
++			"Mic Jack", "MICB",
++			"Headphone Jack", "HP_L",
++			"Headphone Jack", "HP_R";
++		mux-int-port = <1>;
++		mux-ext-port = <3>;
++
++	};
++
++};
++
++&audmux {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_audmux_1>;
++	status = "okay";
+ };
+ 
+ &ecspi1 {
+@@ -76,6 +129,15 @@
+ 	fsl,spi-num-chipselects = <2>;
+ 	cs-gpios = <&gpio4 24 0>, <&gpio4 25 0>;
+ 	status = "okay";
++
++	mcp4912: mcp49x2@1 {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		compatible = "mcp4912";
++		spi-max-frequency = <8000000>;
++		reg = <1>;
++		gpios = <&gpio4 26 0>;
++	};
+ };
+ 
+ &ecspi2 {
+@@ -113,6 +175,25 @@
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&pinctrl_i2c2_2>;
+ 	status = "okay";
++
++	wm831xx: wm831x@36 {
++		compatible = "wm8311";
++		reg = <0x36>;
++		irq-cmos;
++		/*gpio-controller;
++		#gpio-cells = <1>;*/
++		gpios = <&gpio1 7 0>;
++		interrupt-parent = <&gpio1>;
++		interrupts = <7 1>;
++		status-leds = <&wm831x_leds_status>;
++		touch = <&apf51_wm831x_touch>;
++	};
++
++	codec: wm8960@1a {
++		compatible = "wm8960";
++		reg = <0x1A>;
++		capless;
++	};
+ };
+ 
+ &uart2 {
+@@ -132,6 +213,7 @@
+ 				MX51_PAD_EIM_EB2__GPIO2_22   0x0C5
+ 				MX51_PAD_EIM_EB3__GPIO2_23   0x0C5
+ 				MX51_PAD_EIM_CS4__GPIO2_29   0x100
++				MX51_PAD_DI1_D1_CS__GPIO3_4	0x0c5
+ 				MX51_PAD_NANDF_D13__GPIO3_27 0x0C5
+ 				MX51_PAD_NANDF_D12__GPIO3_28 0x0C5
+ 				MX51_PAD_CSPI1_SS0__GPIO4_24 0x0C5
+@@ -140,7 +222,22 @@
+ 				MX51_PAD_GPIO1_3__GPIO1_3    0x0C5
+ 				MX51_PAD_DI1_D1_CS__GPIO3_4  0x0C5
+ 				MX51_PAD_EIM_CS3__GPIO2_28   0x0C5
++				MX51_PAD_DI1_PIN12__GPIO3_1 0x80000000
++				MX51_PAD_GPIO1_8__GPIO1_8 0x80000000
++				MX51_PAD_GPIO1_7__GPIO1_7 0x80000000
++				/* fpga */
++				MX51_PAD_DI1_D0_CS__GPIO3_3 0x0C5 /* CONFIG_SYS_FPGA_PWR */
++			    MX51_PAD_CSI2_D12__GPIO4_9  0x0C5 /* CONFIG_SYS_FPGA_PRG */
++			    MX51_PAD_CSI2_D18__GPIO4_11 0x0C5 /* CONFIG_SYS_FPGA_INIT */
++			    MX51_PAD_CSI2_D13__GPIO4_10 0x0C5 /* CONFIG_SYS_FPGA_DONE */
++				MX51_PAD_DISPB2_SER_DIO__GPIO3_6 0x0C5 /* CONFIG_SYS_FPGA_SUSPEND */
++				MX51_PAD_GPIO1_5__GPIO1_5 0x0C5
+ 			>;
+ 		};
+ 	};
+ };
++
++&ssi1 {
++	fsl,mode = "i2s-slave";
++	status = "okay";
++};

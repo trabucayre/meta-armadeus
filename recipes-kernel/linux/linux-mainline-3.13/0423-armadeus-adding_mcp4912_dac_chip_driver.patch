@@ -1,0 +1,432 @@
+Adding Microchip MCP4912 DAC driver
+
+
+Signed-off-by: Fabien Marteau <fabien.marteau@armadeus.com>
+Signed-off-by: Nicolas Colombain <nicolas.colombain@armadeus.com>
+---
+
+Index: linux-3.12-rc3/drivers/iio/dac/Kconfig
+===================================================================
+--- linux-3.12-rc3.orig/drivers/iio/dac/Kconfig
++++ linux-3.12-rc3/drivers/iio/dac/Kconfig
+@@ -142,6 +142,16 @@ config AD7303
+ 	  To compile this driver as module choose M here: the module will be called
+ 	  ad7303.
+ 
++config MCP49x2
++	tristate "Microchip MCP4902, MCP4912, MCP4922 driver"
++	depends on SPI
++	help
++	  Say yes here to build support for Microchip
++	  MCP4902, MCP4912, MCP22 devices
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called mcp49x2.
++
+ config MAX517
+ 	tristate "Maxim MAX517/518/519 DAC driver"
+ 	depends on I2C
+Index: linux-3.12-rc3/drivers/iio/dac/Makefile
+===================================================================
+--- linux-3.12-rc3.orig/drivers/iio/dac/Makefile
++++ linux-3.12-rc3/drivers/iio/dac/Makefile
+@@ -18,3 +18,4 @@ obj-$(CONFIG_AD5686) += ad5686.o
+ obj-$(CONFIG_AD7303) += ad7303.o
+ obj-$(CONFIG_MAX517) += max517.o
+ obj-$(CONFIG_MCP4725) += mcp4725.o
++obj-$(CONFIG_MCP4725) += mcp49x2.o
+Index: linux-3.12-rc3/drivers/iio/dac/mcp49x2.c
+===================================================================
+--- /dev/null
++++ linux-3.12-rc3/drivers/iio/dac/mcp49x2.c
+@@ -0,0 +1,356 @@
++/*
++ * mcp49x2.c
++ *
++ * Driver for Microchip Digital to Analog Converter MCP4912.
++ *
++ * Copyright (c) 2011	Nicolas Colombain <nicolas.colombain@armadeus.com>
++ *			Fabien Marteau <fabien.marteau@armadeus.com>
++ * sponsored by ARMadeus Systems.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
++ *
++ * TODO:
++ * - Generalize driver for MCP4902 and MCP4922 chip
++ * - Manage power mode
++ * - Manage reference voltage with /sys entry
++ */
++
++#include <linux/init.h>
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/device.h>
++#include <linux/err.h>
++#include <linux/gpio.h>
++#include <linux/of.h>
++#include <linux/of_gpio.h>
++#include <linux/sysfs.h>
++#include <linux/mutex.h>
++#include <linux/spi/spi.h>
++#include <linux/delay.h>
++
++#include <linux/iio/iio.h>
++//#include "dac.h"
++#include "mcp49x2.h"
++
++#define DRIVER_NAME    "mcp49x2"
++#define DRIVER_VERSION "0.2"
++
++#define MCP49X2_ADDR(_addr)	((_addr) << 15)
++#define MCP49X2_BUF(_buf)	((_buf) << 14)
++#define MCP49X2_GAIN(_gain)	((_gain) << 13)
++#define MCP49X2_SHDN(_shdn)	((_shdn) << 12)
++
++enum mcp49x2_device_ids {
++	ID_MCP4902,
++	ID_MCP4912,
++	ID_MCP4922,
++};
++
++struct mcp49x2_chip_info {
++	const struct iio_chan_spec *channels;
++};
++
++struct mcp49x2_device {
++	struct iio_dev *indio_dev;
++	struct spi_device *spi_dev;
++	struct mcp49x2_config *plat_dat;
++	unsigned int value[2]; /* Value write on each channel */
++	unsigned int power_mode[2];
++	unsigned int gain[2];
++
++	u16 data ____cacheline_aligned;
++};
++
++static int mcp49x2_spi_write(struct mcp49x2_device *mcp49x2,
++			     u8 channel, u8 buf, u8 gain, u8 shdn,
++			     unsigned int value, unsigned int shift)
++{
++	mcp49x2->data = MCP49X2_ADDR(channel)
++			| MCP49X2_BUF(buf) | MCP49X2_GAIN(gain)
++			| MCP49X2_SHDN(shdn) | value << shift;
++	return spi_write(mcp49x2->spi_dev, &mcp49x2->data, sizeof(mcp49x2->data));
++}
++
++static ssize_t mcp49x2_write_dac_value(struct iio_dev *indio_dev,
++	struct iio_chan_spec const *chan, int val, int val2, long mask)
++{
++	struct mcp49x2_device *mcp49x2 = iio_priv(indio_dev);
++	int channel = chan->channel;
++	int ret;
++
++	switch (mask) {
++	case IIO_CHAN_INFO_RAW:
++		if (val >= (1 << chan->scan_type.realbits) || val < 0)
++			return -EINVAL;
++
++		ret = mcp49x2_spi_write(mcp49x2,
++				chan->address, 1, mcp49x2->gain[channel],
++				mcp49x2->power_mode[channel], val, chan->scan_type.shift);
++		if (ret == 0)
++			mcp49x2->value[channel] = val;
++		break;
++	case IIO_CHAN_INFO_HARDWAREGAIN:
++		if (val < 0 || val > 1)
++			return -EINVAL;
++
++		ret = mcp49x2_spi_write(mcp49x2,
++				chan->address, 1, val, mcp49x2->power_mode[channel],
++				mcp49x2->value[channel], chan->scan_type.shift);
++		if (ret == 0)
++			mcp49x2->gain[channel] = val;
++		break;
++	default:
++		ret = -EINVAL;
++	}
++
++	return ret;
++}
++
++static ssize_t mcp49x2_read_dac_value(struct iio_dev *indio_dev,
++	struct iio_chan_spec const *chan, int val, int val2, long mask)
++{
++	struct mcp49x2_device *mcp49x2 = iio_priv(indio_dev);
++	int scale_uv;
++	int ret;
++
++	switch (mask) {
++	case IIO_CHAN_INFO_RAW:
++		*val = mcp49x2->value[chan->channel];
++		return IIO_VAL_INT;
++	case IIO_CHAN_INFO_SCALE:
++		/* vout = 4 * vref * dac_code */
++		scale_uv = mcp49x2->value[chan->channel];
++		if (mcp49x2->gain[chan->channel] == 0)
++			scale_uv <<= 1;
++		if (scale_uv < 0)
++			return scale_uv;
++
++		*val =  scale_uv / 100000;
++		*val2 = (scale_uv % 100000) * 10;
++		return IIO_VAL_INT_PLUS_MICRO;
++	case IIO_CHAN_INFO_HARDWAREGAIN:
++		*val = mcp49x2->gain[chan->channel];
++		return IIO_VAL_INT;
++	}
++
++	return -EINVAL;
++}
++
++static ssize_t mcp49x2_write_powerdown(struct iio_dev *indio_dev, uintptr_t priv,
++	struct iio_chan_spec const *chan, const char *buf, size_t len)
++{
++	bool pwr_down;
++	int ret;
++	struct mcp49x2_device *mcp49x2 = iio_priv(indio_dev);
++
++	ret = strtobool(buf, &pwr_down);
++	if (ret)
++		return ret;
++
++	ret = mcp49x2_spi_write(mcp49x2, chan->channel,
++				0, mcp49x2->gain[chan->channel], pwr_down,
++				mcp49x2->value[chan->channel], chan->scan_type.shift);
++
++	mcp49x2->power_mode[chan->channel] = pwr_down;
++
++	return ret ? ret : len;
++}
++
++static ssize_t mcp49x2_read_powerdown(struct iio_dev *indio_dev, uintptr_t priv,
++	const struct iio_chan_spec *chan, char *buf)
++{
++	struct mcp49x2_device *mcp49x2 = iio_priv(indio_dev);
++
++	return sprintf(buf, "%d\n",
++				(bool)mcp49x2->power_mode[chan->channel]);
++}
++
++static const struct iio_info mcp49x2_info = {
++	/*.read_raw = mcp49x2_read_raw,*/
++	.write_raw = mcp49x2_write_dac_value,
++	.driver_module = THIS_MODULE,
++};
++
++static const struct iio_chan_spec_ext_info mcp49x2_ext_info[] = {
++	{
++		.name = "powerdown",
++		.read = mcp49x2_read_powerdown,
++		.write = mcp49x2_write_powerdown,
++	},
++	{ },
++};
++
++#define MCP49x2_CHANNEL(chan, bits) {		\
++	.type = IIO_VOLTAGE,					\
++	.indexed = 1,						\
++	.output = 1,						\
++	.channel = (chan),					\
++	.address = (chan),					\
++	.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) | \
++		BIT(IIO_CHAN_INFO_HARDWAREGAIN), \
++		BIT(IIO_CHAN_INFO_SCALE),		\
++	.scan_type = IIO_ST('u', (bits), 10, 12 - (bits)), \
++	.ext_info = mcp49x2_ext_info,				\
++}
++
++#define DECLARE_MCP49x2_CHANNELS(_name, _bits) \
++const struct iio_chan_spec _name##_channels[] = { \
++	MCP49x2_CHANNEL(0, (_bits)), \
++	MCP49x2_CHANNEL(1, (_bits)), \
++};
++
++static DECLARE_MCP49x2_CHANNELS(mcp4902, 8);
++static DECLARE_MCP49x2_CHANNELS(mcp4912, 10);
++static DECLARE_MCP49x2_CHANNELS(mcp4922, 12);
++
++static const struct mcp49x2_chip_info mcp49x2_channels[] = {
++	[ID_MCP4902] = {
++		.channels = mcp4902_channels,
++	},
++	[ID_MCP4912] = {
++		.channels = mcp4912_channels,
++	},
++	[ID_MCP4922] = {
++		.channels = mcp4922_channels,
++	},
++};
++
++static int mcp49x2_probe(struct spi_device *spi)
++{
++	struct device_node *np = spi->dev.of_node;
++	const struct spi_device_id *id = spi_get_device_id(spi);
++	struct iio_dev *indio_dev;
++	struct mcp49x2_device *mcp49x2;
++	struct mcp49x2_config *platform_info = NULL;
++	int result;
++	int gpio;
++
++	pr_debug("%s\n", __FUNCTION__);
++
++	indio_dev = devm_iio_device_alloc(&spi->dev, sizeof(*mcp49x2));
++	if (indio_dev == NULL)
++		return -ENOMEM;
++
++	mcp49x2 = iio_priv(indio_dev);
++	spi_set_drvdata(spi, indio_dev);
++	mcp49x2->spi_dev = spi;
++
++	if (!np) {
++		platform_info = (struct mcp49x2_config *)(spi->dev.platform_data);
++		if (platform_info == NULL) {
++			dev_err(&spi->dev, "can't get the platform data for mcp49x2\n");
++			return -EINVAL;
++		}
++	}
++	if (np) {
++		gpio = of_get_named_gpio(np, "gpios", 0);
++		if (gpio < 0) {
++			printk("erreur de gpio\n");
++		} else {
++		/*ret = */devm_gpio_request_one(&spi->dev, gpio, (GPIOF_DIR_OUT | GPIOF_INIT_LOW),
++				"mcp49x2_ldac");
++		}
++
++	} else {
++		if (gpio_is_valid(platform_info->ldac_pin)) {
++			result = gpio_request(platform_info->ldac_pin, "mcp49x2_ldac");
++			if (result) {
++				dev_err(&spi->dev,
++					"failed to allocate ldac gpio\n");
++				return result;
++			}
++			gpio_direction_output(platform_info->ldac_pin, 0);
++		}
++		else {
++			dev_err(&spi->dev,"ldac gpio not valid\n");
++			return -EINVAL;
++		}
++	}
++
++	mcp49x2->plat_dat = platform_info;
++	indio_dev->dev.parent = &spi->dev;
++	mcp49x2->value[0] = 0;
++	mcp49x2->value[1] = 0;
++	mcp49x2->power_mode[0] = 0;
++	mcp49x2->power_mode[1] = 0;
++	mcp49x2->gain[0] = 0;
++	mcp49x2->gain[1] = 0;
++
++	indio_dev->info = &mcp49x2_info;
++	indio_dev->name = "mcp49x2";
++	indio_dev->modes = INDIO_DIRECT_MODE;
++	indio_dev->channels = mcp49x2_channels[id->driver_data].channels;
++	indio_dev->num_channels = 2;
++
++	result = iio_device_register(indio_dev);
++	if (result)
++		goto err_alloc;
++
++	/* setup spi_device */
++	spi->bits_per_word = 16;
++	spi_setup(spi);
++
++	printk(DRIVER_NAME " v" DRIVER_VERSION " successfully probed !\n");
++
++	return 0;
++
++err_alloc:
++	if (gpio_is_valid(platform_info->ldac_pin))
++		gpio_free(platform_info->ldac_pin);
++
++	return result;
++}
++
++static int mcp49x2_remove(struct spi_device *spi)
++{
++	struct iio_dev *indio_dev = spi_get_drvdata(spi);
++	struct mcp49x2_device *mcp49x2 = iio_priv(indio_dev);
++	struct mcp49x2_config *platform_info = mcp49x2->plat_dat;
++
++	pr_debug("%s\n", __FUNCTION__);
++
++	if (gpio_is_valid(platform_info->ldac_pin))
++		gpio_free(platform_info->ldac_pin);
++
++	iio_device_unregister(indio_dev);
++
++	return 0;
++}
++
++static const struct spi_device_id mcp49x2_ids[] = {
++	{"mcp4902", ID_MCP4902},
++	{"mcp4912", ID_MCP4912},
++	{"mcp4922", ID_MCP4922},
++	{}
++};
++MODULE_DEVICE_TABLE(spi, mcp49x2_ids);
++
++static struct spi_driver mcp49x2_driver = {
++	.driver = {
++		.name	= DRIVER_NAME,
++		.owner	= THIS_MODULE,
++	},
++	.probe		= mcp49x2_probe,
++	.remove		= mcp49x2_remove,
++	.id_table	= mcp49x2_ids,
++};
++module_spi_driver(mcp49x2_driver);
++
++MODULE_AUTHOR("Nicolas Colombain <nicolas.colombain@armadeus.com>"
++	      "Fabien Marteau <fabien.marteau@armadeus.com>"
++	      "Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>");
++MODULE_DESCRIPTION("Microchip MCP4902/MCP4912/MCP4922 DAC");
++MODULE_LICENSE("GPL v2");
++
+Index: linux-3.12-rc3/drivers/iio/dac/mcp49x2.h
+===================================================================
+--- /dev/null
++++ linux-3.12-rc3/drivers/iio/dac/mcp49x2.h
+@@ -0,0 +1,29 @@
++/*
++ * mcp4912.h
++ *
++ * Driver for Microchip Digital to Analog Converter MCP4912.
++ *
++ * Copyright (c) 2011 Nicolas Colombain <nicolas.colombain@armadeus.com>
++ * Copyright (c) 2011 Fabien Marteau <fabien.marteau@armadeus.com>
++ * sponsored by ARMadeus Systems.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
++ */
++
++struct mcp49x2_config {
++	int ldac_pin;  /* LDAC# latching pin gpio (-1 if no latch)*/
++	unsigned short vref_mv[2]; /* Voltage reference for each channel */
++};
++

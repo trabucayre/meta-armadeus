@@ -1,0 +1,106 @@
+Return-Path: <denis@eukrea.com>
+Delivered-To: gwenhael.goavec-merou@armadeus.com
+Received: from b0.ovh.net (HELO queue) (213.186.33.50)
+	by b0.ovh.net with SMTP; 22 Jan 2014 15:48:57 +0200
+Received: from smtp3-g21.free.fr (212.27.42.3)
+  by mx1.ovh.net with SMTP; 22 Jan 2014 15:48:56 +0200
+Received: from denis-N73SV.local.eukrea.com (unknown [88.170.243.169])
+	by smtp3-g21.free.fr (Postfix) with ESMTP id B48D4A6176;
+	Wed, 22 Jan 2014 14:48:46 +0100 (CET)
+From: Denis Carikli <denis@eukrea.com>
+To: Shawn Guo <shawn.guo@linaro.org>
+Cc: Denis Carikli <denis@eukrea.com>,
+	Greg Kroah-Hartman <gregkh@linuxfoundation.org>,
+	Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>,
+	=?UTF-8?q?Eric=20B=C3=A9nard?= <eric@eukrea.com>,
+	Marek Vasut <marex@denx.de>,
+	Sascha Hauer <kernel@pengutronix.de>,
+	Thierry Reding <thierry.reding@gmail.com>,
+	devel@driverdev.osuosl.org
+Subject: [PATCHv6 3/7] staging: imx-drm: Correct BGR666 and the board's dts that use them.
+Date: Wed, 22 Jan 2014 14:48:27 +0100
+Message-Id: <1390398511-8041-3-git-send-email-denis@eukrea.com>
+X-Mailer: git-send-email 1.7.9.5
+In-Reply-To: <1390398511-8041-1-git-send-email-denis@eukrea.com>
+References: <1390398511-8041-1-git-send-email-denis@eukrea.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+X-Ovh-Tracer-Id: 14720015383183629731
+X-Ovh-Remote: 212.27.42.3 (smtp3-g21.free.fr)
+X-Ovh-Local: 213.186.33.29 (mx1.ovh.net)
+X-OVH-SPAMSTATE: OK
+X-OVH-SPAMSCORE: -100
+X-OVH-SPAMCAUSE: gggruggvucftvghtrhhoucdtuddrfeejtddrheduucetufdoteggodetrfcurfhrohhfihhlvgemucfqggfjnecuuegrihhlohhuthemuceftddtnecusecvtfgvtghiphhivghnthhsucdlqddutddtmd
+X-Spam-Check: DONE|U 0.5/N
+
+The current BGR666 is not consistent with the other color mapings like BGR24.
+BGR666 should be in the same byte order than BGR24.
+
+Cc: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+Cc: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+Cc: Eric Bénard <eric@eukrea.com>
+Cc: Marek Vasut <marex@denx.de>
+Cc: Sascha Hauer <kernel@pengutronix.de>
+Cc: Shawn Guo <shawn.guo@linaro.org>
+Cc: Thierry Reding <thierry.reding@gmail.com>
+Cc: devel@driverdev.osuosl.org
+Signed-off-by: Denis Carikli <denis@eukrea.com>
+---
+ChangeLog v5->v6:
+- Remove people not concerned by this patch from the Cc list.
+- Added a better explanation of the change.
+
+ChangeLog v5:
+- New patch.
+---
+ arch/arm/boot/dts/imx51-apf51dev.dts    |    2 +-
+ arch/arm/boot/dts/imx53-m53evk.dts      |    2 +-
+ drivers/staging/imx-drm/ipu-v3/ipu-dc.c |    4 ++--
+ 3 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/boot/dts/imx51-apf51dev.dts b/arch/arm/boot/dts/imx51-apf51dev.dts
+index f36a3aa..3b6de6a 100644
+--- a/arch/arm/boot/dts/imx51-apf51dev.dts
++++ b/arch/arm/boot/dts/imx51-apf51dev.dts
+@@ -19,7 +19,7 @@
+ 	display@di1 {
+ 		compatible = "fsl,imx-parallel-display";
+ 		crtcs = <&ipu 0>;
+-		interface-pix-fmt = "bgr666";
++		interface-pix-fmt = "rgb666";
+ 		pinctrl-names = "default";
+ 		pinctrl-0 = <&pinctrl_ipu_disp1>;
+ 
+diff --git a/arch/arm/boot/dts/imx53-m53evk.dts b/arch/arm/boot/dts/imx53-m53evk.dts
+index c623774..b98c897 100644
+--- a/arch/arm/boot/dts/imx53-m53evk.dts
++++ b/arch/arm/boot/dts/imx53-m53evk.dts
+@@ -24,7 +24,7 @@
+ 		display@di1 {
+ 			compatible = "fsl,imx-parallel-display";
+ 			crtcs = <&ipu 1>;
+-			interface-pix-fmt = "bgr666";
++			interface-pix-fmt = "rgb666";
+ 			pinctrl-names = "default";
+ 			pinctrl-0 = <&pinctrl_ipu_disp1>;
+ 
+diff --git a/drivers/staging/imx-drm/ipu-v3/ipu-dc.c b/drivers/staging/imx-drm/ipu-v3/ipu-dc.c
+index 617e65b..b11a2aa 100644
+--- a/drivers/staging/imx-drm/ipu-v3/ipu-dc.c
++++ b/drivers/staging/imx-drm/ipu-v3/ipu-dc.c
+@@ -397,9 +397,9 @@ int ipu_dc_init(struct ipu_soc *ipu, struct device *dev,
+ 
+ 	/* bgr666 */
+ 	ipu_dc_map_clear(priv, IPU_DC_MAP_BGR666);
+-	ipu_dc_map_config(priv, IPU_DC_MAP_BGR666, 0, 5, 0xfc); /* blue */
++	ipu_dc_map_config(priv, IPU_DC_MAP_BGR666, 0, 17, 0xfc); /* blue */
+ 	ipu_dc_map_config(priv, IPU_DC_MAP_BGR666, 1, 11, 0xfc); /* green */
+-	ipu_dc_map_config(priv, IPU_DC_MAP_BGR666, 2, 17, 0xfc); /* red */
++	ipu_dc_map_config(priv, IPU_DC_MAP_BGR666, 2, 5, 0xfc); /* red */
+ 
+ 	/* bgr24 */
+ 	ipu_dc_map_clear(priv, IPU_DC_MAP_BGR24);
+-- 
+1.7.9.5
+

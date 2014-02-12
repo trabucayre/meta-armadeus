@@ -1,0 +1,13 @@
+Index: linux-3.12-rc3/arch/arm/mach-imx/fpga.h
+===================================================================
+--- linux-3.12-rc3.orig/arch/arm/mach-imx/fpga.h
++++ linux-3.12-rc3/arch/arm/mach-imx/fpga.h
+@@ -19,7 +19,7 @@
+ #ifndef __ASM_ARCH_ARMADEUS_FPGA_H__
+ #define __ASM_ARCH_ARMADEUS_FPGA_H__
+ 
+-#if defined(CONFIG_MACH_APF51) /* */
++#if defined(CONFIG_MACH_APF51) || defined(CONFIG_MACH_IMX51_DT) /* */
+ # define APF51_FPGA_BASE_ADDR		0xb8000000
+ # define ARMADEUS_FPGA_BASE_ADDR	APF51_FPGA_BASE_ADDR
+ # define APF51_FPGA_INT_PIN		(IMX_GPIO_NR(4, 11)) /* INITB */

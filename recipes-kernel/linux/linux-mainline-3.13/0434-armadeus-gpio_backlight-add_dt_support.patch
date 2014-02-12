@@ -1,0 +1,112 @@
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+Index: linux-3.13-rc1/drivers/video/backlight/gpio_backlight.c
+===================================================================
+--- linux-3.13-rc1.orig/drivers/video/backlight/gpio_backlight.c
++++ linux-3.13-rc1/drivers/video/backlight/gpio_backlight.c
+@@ -13,6 +13,8 @@
+ #include <linux/init.h>
+ #include <linux/kernel.h>
+ #include <linux/module.h>
++#include <linux/of.h>
++#include <linux/of_gpio.h>
+ #include <linux/platform_data/gpio_backlight.h>
+ #include <linux/platform_device.h>
+ #include <linux/slab.h>
+@@ -45,33 +47,84 @@ static int gpio_backlight_get_brightness
+ 	return bl->props.brightness;
+ }
+ 
++#if 0
+ static int gpio_backlight_check_fb(struct backlight_device *bl,
+ 				   struct fb_info *info)
+ {
+ 	struct gpio_backlight *gbl = bl_get_data(bl);
+ 
+-	return gbl->fbdev == NULL || gbl->fbdev == info->dev;
++	/*return gbl->fbdev == NULL || gbl->fbdev == info->dev;*/
++	printk("%d\n",!gbl->check_fb || gbl->check_fb(gbl->dev, info));
++	return !gbl->check_fb || gbl->check_fb(gbl->dev, info);
++	/*return 0;*/
+ }
++#endif
+ 
+ static const struct backlight_ops gpio_backlight_ops = {
+ 	.options	= BL_CORE_SUSPENDRESUME,
+ 	.update_status	= gpio_backlight_update_status,
+ 	.get_brightness	= gpio_backlight_get_brightness,
+-	.check_fb	= gpio_backlight_check_fb,
++	/*.check_fb	= gpio_backlight_check_fb,*/
+ };
+ 
++#ifdef CONFIG_OF
++static int gpio_backlight_parse_dt(struct device *dev,
++					struct gpio_backlight_platform_data *data)
++{
++	struct device_node *node = dev->of_node;
++
++	if (!node)
++		return -ENODEV;
++
++	memset(data, 0, sizeof(*data));
++
++	/* fbdev needed ?*/
++	 
++	/* gpio */
++	data->gpio = of_get_named_gpio(node, "gpios", 0);
++	/* def value */
++	of_find_property(node, "default-value", &data->def_value);
++	/* active low */
++    if (of_find_property(node, "active-low", NULL))
++		data->active_low = true;
++	/* name needed?*/
++	of_property_read_string(node, "label", &data->name);
++	return 0;
++}
++
++static struct of_device_id gpio_backlight_of_match[] = {
++	{ .compatible = "gpio-backlight" },
++	{ }
++};
++
++MODULE_DEVICE_TABLE(of, gpio_backlight_of_match);
++#else
++
++static int gpio_backlight_parse_dt(struct device *dev,
++					struct gpio_backlight_platform_data *data)
++{
++	return -ENODEV;
++}
++#endif
++
+ static int gpio_backlight_probe(struct platform_device *pdev)
+ {
+ 	struct gpio_backlight_platform_data *pdata =
+ 		dev_get_platdata(&pdev->dev);
++	struct gpio_backlight_platform_data defdata;
+ 	struct backlight_properties props;
+ 	struct backlight_device *bl;
+ 	struct gpio_backlight *gbl;
+ 	int ret;
+ 
+ 	if (!pdata) {
+-		dev_err(&pdev->dev, "failed to find platform data\n");
+-		return -ENODEV;
++		ret = gpio_backlight_parse_dt(&pdev->dev, &defdata);
++		if (ret < 0) {
++			dev_err(&pdev->dev, "failed to find platform data\n");
++			return -ENODEV;
++		}
++
++		pdata = &defdata;
+ 	}
+ 
+ 	gbl = devm_kzalloc(&pdev->dev, sizeof(*gbl), GFP_KERNEL);
+@@ -114,6 +167,7 @@ static struct platform_driver gpio_backl
+ 	.driver		= {
+ 		.name		= "gpio-backlight",
+ 		.owner		= THIS_MODULE,
++		.of_match_table = of_match_ptr(gpio_backlight_of_match),
+ 	},
+ 	.probe		= gpio_backlight_probe,
+ };
