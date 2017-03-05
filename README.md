@@ -1,23 +1,38 @@
 meta-armadeus
 =============
 
-OpenEmbedded/Yocto BSP layer for Armadeus Boards (currently only APF51).
+OpenEmbedded/Yocto BSP layer for Armadeus Boards (currently APF28/APF51/APF6).
 
 Depends:
 --------
 
 This layer depends on:
 Yocto:
-	git clone git://git.yoctoproject.org/poky.git poky
 
-Meta-oe:
-	git clone https://github.com/openembedded/meta-oe.git
+	git clone -b krogoth git://git.yoctoproject.org/poky.git poky
+
+Meta-openembedded:
+
+	git clone -b krogoth git://git.openembedded.org/meta-openembedded
+
+Meta-fsl-arm:
+
+	git clone -b krogoth git@github.com:Freescale/meta-fsl-arm.git
 
 Configuration:
 --------------
-conf/bblayers.conf:
-/home/gwe/yocto/poky/meta-oe 
-/home/gwe/yocto/poky/meta-armadeus
+Add :
 
-conf/local.conf: MACHINE = "apf51"
+	/somewhere/poky/meta-openembedded \
+	/somewhere/poky/meta-fsl-arm \
+	/somewhere/poky/meta-armadeus \
+
+to the **BBLAYERS** part of *conf/bblayers.conf*:
+
+And fix **MACHINE** variable in *conf/local.conf*. Value may be :
+* apf28
+* apf51
+* apf6dev-solo
+* apf6dev-dual
+* apf6dev-quad
 
