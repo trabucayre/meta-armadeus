@@ -1,0 +1,56 @@
+If one wants to compile a 4.1.15 Freescale kernel with imx_v7_defconfig
+and have Wi-Fi (and some other things) working on APF6.
+ 
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-imx_4.1.15_2.0.0_ga/arch/arm/configs/imx_v7_defconfig
+===================================================================
+--- linux-imx_4.1.15_2.0.0_ga.orig/arch/arm/configs/imx_v7_defconfig
++++ linux-imx_4.1.15_2.0.0_ga/arch/arm/configs/imx_v7_defconfig
+@@ -35,7 +35,7 @@ CONFIG_PREEMPT=y
+ CONFIG_AEABI=y
+ CONFIG_HIGHMEM=y
+ CONFIG_CMA=y
+-CONFIG_CMDLINE="noinitrd console=ttymxc0,115200"
++CONFIG_CMDLINE="noinitrd console=ttymxc3,115200"
+ CONFIG_CPU_FREQ=y
+ CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND=y
+ CONFIG_CPU_FREQ_GOV_POWERSAVE=y
+@@ -75,12 +75,18 @@ CONFIG_BT_BNEP_PROTO_FILTER=y
+ CONFIG_BT_HIDP=y
+ CONFIG_BT_HCIBTUSB=y
+ CONFIG_BT_HCIUART=y
++CONFIG_BT_HCIUART_H4=y
++CONFIG_BT_HCIUART_LL=y
+ CONFIG_BT_HCIUART_BCSP=y
+ CONFIG_BT_HCIUART_ATH3K=y
+ CONFIG_BT_HCIBCM203X=y
+ CONFIG_BT_ATH3K=y
+ CONFIG_CFG80211=y
++CONFIG_NL80211_TESTMODE=y
++CONFIG_CFG80211_WEXT=y
+ CONFIG_MAC80211=y
++CONFIG_RFKILL=y
++CONFIG_RFKILL_GPIO=y
+ CONFIG_DEVTMPFS=y
+ CONFIG_DEVTMPFS_MOUNT=y
+ # CONFIG_STANDALONE is not set
+@@ -149,6 +155,10 @@ CONFIG_BCMDHD_SDIO=y
+ CONFIG_BCMDHD_FW_PATH="/lib/firmware/bcm/ZP_BCM4339/fw_bcmdhd.bin"
+ CONFIG_BCMDHD_NVRAM_PATH="/lib/firmware/bcm/ZP_BCM4339/bcmdhd.ZP.OOB.cal"
+ # CONFIG_RTL_CARDS is not set
++CONFIG_WL_TI=y
++CONFIG_WL12XX=m
++CONFIG_WLCORE_SDIO=m
++# CONFIG_WILINK_PLATFORM_DATA is not set
+ # CONFIG_INPUT_MOUSEDEV_PSAUX is not set
+ CONFIG_INPUT_EVDEV=y
+ CONFIG_INPUT_EVBUG=m
+@@ -157,6 +167,7 @@ CONFIG_KEYBOARD_IMX=y
+ CONFIG_MOUSE_PS2=m
+ CONFIG_MOUSE_PS2_ELANTECH=y
+ CONFIG_INPUT_TOUCHSCREEN=y
++CONFIG_TOUCHSCREEN_SX8654=y
+ CONFIG_TOUCHSCREEN_ADS7846=y
+ CONFIG_TOUCHSCREEN_EGALAX=y
+ CONFIG_TOUCHSCREEN_ELAN_TS=y

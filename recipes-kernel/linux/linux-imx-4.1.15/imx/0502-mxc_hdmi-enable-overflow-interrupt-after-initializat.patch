@@ -1,0 +1,40 @@
+From c8f43d0690a7ce400d68075c9548c26e99e35996 Mon Sep 17 00:00:00 2001
+From: Troy Kisky <troy.kisky@boundarydevices.com>
+Date: Thu, 9 Jan 2014 14:29:52 -0700
+Subject: [PATCH] mxc_hdmi: enable overflow interrupt after initialization
+ complete
+
+If enabled too early, a flood of interrupts can happen, and as
+console_lock is held, you cannot see any messages being printed.
+
+Signed-off-by: Troy Kisky <troy.kisky@boundarydevices.com>
+---
+ drivers/video/fbdev/mxc/mxc_hdmi.c | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/video/fbdev/mxc/mxc_hdmi.c b/drivers/video/fbdev/mxc/mxc_hdmi.c
+index 513ab16..9aed90b 100644
+--- a/drivers/video/fbdev/mxc/mxc_hdmi.c
++++ b/drivers/video/fbdev/mxc/mxc_hdmi.c
+@@ -1261,9 +1261,6 @@ static void mxc_hdmi_phy_init(struct mxc_hdmi *hdmi)
+ 			|| (hdmi->blank != FB_BLANK_UNBLANK))
+ 		return;
+ 
+-	if (!hdmi->hdmi_data.video_mode.mDVI)
+-		hdmi_enable_overflow_interrupts();
+-
+ 	/*check csc whether needed activated in HDMI mode */
+ 	cscon = (isColorSpaceConversion(hdmi) &&
+ 			!hdmi->hdmi_data.video_mode.mDVI);
+@@ -1280,6 +1277,8 @@ static void mxc_hdmi_phy_init(struct mxc_hdmi *hdmi)
+ 	}
+ 
+ 	hdmi->phy_enabled = true;
++	if (!hdmi->hdmi_data.video_mode.mDVI)
++		hdmi_enable_overflow_interrupts();
+ }
+ 
+ static void hdmi_config_AVI(struct mxc_hdmi *hdmi)
+-- 
+2.7.3
+

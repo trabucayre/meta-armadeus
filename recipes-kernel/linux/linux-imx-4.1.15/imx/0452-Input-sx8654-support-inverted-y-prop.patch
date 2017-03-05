@@ -1,0 +1,33 @@
+Index: linux-imx_3.14.52_1.1.0_ga/drivers/input/touchscreen/sx8654.c
+===================================================================
+--- linux-imx_3.14.52_1.1.0_ga.orig/drivers/input/touchscreen/sx8654.c
++++ linux-imx_3.14.52_1.1.0_ga/drivers/input/touchscreen/sx8654.c
+@@ -74,6 +74,7 @@
+ struct sx8654 {
+ 	struct input_dev *input;
+ 	struct i2c_client *client;
++	bool inverty;
+ };
+ 
+ static irqreturn_t sx8654_irq(int irq, void *handle)
+@@ -110,7 +111,10 @@ static irqreturn_t sx8654_irq(int irq, v
+ 			goto out;
+ 
+ 		x = ((data[0] & 0xf) << 8) | (data[1]);
+-		y = ((data[2] & 0xf) << 8) | (data[3]);
++		if (sx8654->inverty)
++			y = MAX_12BIT - (((data[2] & 0xf) << 8) | (data[3]));
++		else
++			y = ((data[2] & 0xf) << 8) | (data[3]);
+ 
+ 		input_report_abs(sx8654->input, ABS_X, x);
+ 		input_report_abs(sx8654->input, ABS_Y, y);
+@@ -209,6 +213,8 @@ static int sx8654_probe(struct i2c_clien
+ 	sx8654->client = client;
+ 	sx8654->input = input;
+ 
++	sx8654->inverty = of_property_read_bool(client->dev.of_node, "invert-y");
++
+ 	input_set_drvdata(sx8654->input, sx8654);
+ 
+ 	error = i2c_smbus_write_byte_data(client, I2C_REG_SOFTRESET,

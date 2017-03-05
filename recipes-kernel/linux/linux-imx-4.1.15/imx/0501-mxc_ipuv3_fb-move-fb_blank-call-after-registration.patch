@@ -1,0 +1,67 @@
+From ce7c8d0b2384ed0f4711f3bdca47024d3406cd29 Mon Sep 17 00:00:00 2001
+From: Troy Kisky <troy.kisky@boundarydevices.com>
+Date: Tue, 12 Apr 2016 12:35:25 -0700
+Subject: [PATCH] mxc_ipuv3_fb: move fb_blank call after registration
+
+If the fb_blank call is before being registered, then
+the node member of fb_info is wrong and the backlight
+code will not work correctly.
+
+Signed-off-by: Troy Kisky <troy.kisky@boundarydevices.com>
+---
+ drivers/video/fbdev/mxc/mxc_ipuv3_fb.c | 25 +++++++++++++------------
+ 1 file changed, 13 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/video/fbdev/mxc/mxc_ipuv3_fb.c b/drivers/video/fbdev/mxc/mxc_ipuv3_fb.c
+index 9771a76..62035c8 100644
+--- a/drivers/video/fbdev/mxc/mxc_ipuv3_fb.c
++++ b/drivers/video/fbdev/mxc/mxc_ipuv3_fb.c
+@@ -3492,17 +3492,6 @@ static int mxcfb_register(struct fb_info *fbi)
+ 			dev_err(fbi->device, "Error fb_set_var ret:%d\n", ret);
+ 			goto err3;
+ 		}
+-
+-		if (mxcfbi->next_blank == FB_BLANK_UNBLANK) {
+-			console_lock();
+-			ret = fb_blank(fbi, FB_BLANK_UNBLANK);
+-			console_unlock();
+-			if (ret < 0) {
+-				dev_err(fbi->device,
+-					"Error fb_blank ret:%d\n", ret);
+-				goto err4;
+-			}
+-		}
+ 	} else {
+ 		/*
+ 		 * Setup the channel again though bootloader
+@@ -3522,6 +3511,19 @@ static int mxcfb_register(struct fb_info *fbi)
+ 	if (ret < 0)
+ 		goto err5;
+ 
++	if (!mxcfbi->late_init) {
++		if (mxcfbi->next_blank == FB_BLANK_UNBLANK) {
++			console_lock();
++			ret = fb_blank(fbi, FB_BLANK_UNBLANK);
++			console_unlock();
++			if (ret < 0) {
++				dev_err(fbi->device,
++					"Error fb_blank ret:%d\n", ret);
++				unregister_framebuffer(fbi);
++				goto err5;
++			}
++		}
++	}
+ 	return ret;
+ err5:
+ 	if (mxcfbi->next_blank == FB_BLANK_UNBLANK) {
+@@ -3540,7 +3542,6 @@ err5:
+ 		}
+ 		console_unlock();
+ 	}
+-err4:
+ err3:
+ 	if (mxcfbi->ipu_alp_ch_irq != -1)
+ 		ipu_free_irq(mxcfbi->ipu, mxcfbi->ipu_alp_ch_irq, fbi);
+-- 
+2.7.3
+

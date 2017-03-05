@@ -1,0 +1,25 @@
+This patch adds the possibility to have custom Armadeus drivers built in kernel or compiled as modules.
+
+Index: linux-imx_3.14.52_1.1.0_ga/drivers/Kconfig
+===================================================================
+--- linux-imx_3.14.52_1.1.0_ga.orig/drivers/Kconfig
++++ linux-imx_3.14.52_1.1.0_ga/drivers/Kconfig
+@@ -172,4 +172,6 @@ source "drivers/phy/Kconfig"
+
+ source "drivers/powercap/Kconfig"
+
++source "drivers/armadeus/Kconfig"
++
+ endmenu
+Index: linux-imx_3.14.52_1.1.0_ga/drivers/Makefile
+===================================================================
+--- linux-imx_3.14.52_1.1.0_ga.orig/drivers/Makefile
++++ linux-imx_3.14.52_1.1.0_ga/drivers/Makefile
+@@ -127,6 +127,7 @@ obj-$(CONFIG_DCA)		+= dca/
+ obj-$(CONFIG_HID)		+= hid/
+ obj-$(CONFIG_PPC_PS3)		+= ps3/
+ obj-$(CONFIG_OF)		+= of/
++obj-$(CONFIG_ARMADEUS_DRIVERS)	+= armadeus/
+ obj-$(CONFIG_SSB)		+= ssb/
+ obj-$(CONFIG_BCMA)		+= bcma/
+ obj-$(CONFIG_VHOST_RING)	+= vhost/
